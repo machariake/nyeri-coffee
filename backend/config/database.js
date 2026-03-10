@@ -1,5 +1,9 @@
 const { Pool } = require('pg');
+const dns = require('dns');
 require('dotenv').config();
+
+// Force IPv4 connections (Render free tier doesn't support IPv6 outbound)
+dns.setDefaultResultOrder('ipv4first');
 
 // Build connection config
 let poolConfig;
