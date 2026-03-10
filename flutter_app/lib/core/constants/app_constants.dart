@@ -6,7 +6,7 @@ class AppConstants {
   // API Configuration
   // Local: http://10.0.2.2:3000/api
   // Production Render API:
-  static const String baseUrl = 'https://nyeri-farmer-api.onrender.com/api';
+  static const String baseUrl = 'https://nyeri-coffee-1.onrender.com/api';
   static const int apiTimeout = 30000; // milliseconds
   
   // Storage Keys

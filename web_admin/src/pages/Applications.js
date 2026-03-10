@@ -4,7 +4,7 @@ import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://nyeri-coffee-1.onrender.com/api';
 
 const { Option } = Select;
 

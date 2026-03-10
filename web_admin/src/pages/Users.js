@@ -4,7 +4,7 @@ import { PlusOutlined, SearchOutlined, EditOutlined, DeleteOutlined } from '@ant
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://nyeri-coffee-1.onrender.com/api';
 
 const Users = () => {
   const [searchText, setSearchText] = useState('');

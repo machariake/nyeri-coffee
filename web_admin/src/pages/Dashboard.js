@@ -33,7 +33,7 @@ const { Title, Text } = Typography;
 const { RangePicker } = DatePicker;
 const { Option } = Select;
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api';
+const API_URL = process.env.REACT_APP_API_URL || 'https://nyeri-coffee-1.onrender.com/api';
 
 const COLORS = ['#2E7D32', '#4CAF50', '#81C784', '#A5D6A7', '#66BB6A', '#43A047'];
 
