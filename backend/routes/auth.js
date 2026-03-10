@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const { v4: uuidv4 } = require('uuid');
 const { body, validationResult } = require('express-validator');
 const { pool } = require('../config/database');
 const { generateToken, authenticate } = require('../middleware/auth');
@@ -44,11 +45,12 @@ router.post('/register', [
         const passwordHash = await bcrypt.hash(password, salt);
 
         // Insert user with RETURNING clause (PostgreSQL) - UUID id
+        const userId = uuidv4();
         const result = await pool.query(
             `INSERT INTO users (id, full_name, email, phone_number, password_hash, role, ward, sub_county, id_number)
-             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
              RETURNING id, full_name, email, phone_number, role, ward, sub_county`,
-            [fullName, email, phoneNumber, passwordHash, role, ward, subCounty, idNumber]
+            [userId, fullName, email, phoneNumber, passwordHash, role, ward, subCounty, idNumber]
         );
 
         const user = result.rows[0];
