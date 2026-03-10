@@ -4,10 +4,9 @@ class AppConstants {
   static const String appVersion = '1.0.0';
 
   // API Configuration
-  // For Android Emulator: use http://10.0.2.2:3000/api
-  // For iOS Simulator: use http://localhost:3000/api
-  // For Physical Device: use http://YOUR_COMPUTER_IP:3000/api
-  static const String baseUrl = 'http://10.0.2.2:3000/api';
+  // Local: http://10.0.2.2:3000/api
+  // Production Render API:
+  static const String baseUrl = 'https://nyeri-farmer-api.onrender.com/api';
   static const int apiTimeout = 30000; // milliseconds
   
   // Storage Keys
