@@ -27,25 +27,34 @@ router.post('/register', [
 
         const { fullName, email, phoneNumber, password, role = 'farmer', ward, subCounty, idNumber } = req.body;
 
-        // Check if email exists
-        const [existingUsers] = await pool.query('SELECT id FROM users WHERE email = ?', [email]);
-        if (existingUsers.length > 0) {
-            return res.status(400).json({ success: false, message: 'Email already registered' });
+        // Check if email exists (PostgreSQL syntax)
+        const existingUsers = await pool.query(
+            'SELECT id FROM users WHERE email = $1',
+            [email]
+        );
+        if (existingUsers.rows.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email already registered' 
+            });
         }
 
         // Hash password
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // Insert user
-        const [result] = await pool.query(
-            `INSERT INTO users (full_name, email, phone_number, password_hash, role, ward, sub_county, id_number) 
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        // Insert user with RETURNING clause (PostgreSQL)
+        const result = await pool.query(
+            `INSERT INTO users (full_name, email, phone_number, password_hash, role, ward, sub_county, id_number)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id, full_name, email, phone_number, role, ward, sub_county`,
             [fullName, email, phoneNumber, passwordHash, role, ward, subCounty, idNumber]
         );
 
+        const user = result.rows[0];
+
         // Generate token
-        const token = generateToken(result.insertId);
+        const token = generateToken(user.id);
 
         res.status(201).json({
             success: true,
@@ -53,18 +62,23 @@ router.post('/register', [
             data: {
                 token,
                 user: {
-                    id: result.insertId,
-                    fullName,
-                    email,
-                    role,
-                    ward,
-                    subCounty
+                    id: user.id,
+                    fullName: user.full_name,
+                    email: user.email,
+                    phoneNumber: user.phone_number,
+                    role: user.role,
+                    ward: user.ward,
+                    subCounty: user.sub_county
                 }
             }
         });
     } catch (error) {
         console.error('Registration error:', error);
-        res.status(500).json({ success: false, message: 'Server error during registration' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error during registration',
+            error: error.message 
+        });
     }
 });
 
@@ -78,52 +92,66 @@ router.post('/login', [
             return res.status(400).json({ success: false, errors: errors.array() });
         }
 
-        const { email, phoneNumber, password } = req.body;
+        const { email, phoneNumber, password, language = 'en' } = req.body;
 
         // Validate that either email or phoneNumber is provided
         if (!email && !phoneNumber) {
-            return res.status(400).json({ success: false, message: 'Email or phone number is required' });
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Email or phone number is required' 
+            });
         }
 
-        // Build query based on whether email or phoneNumber is provided
+        // Build query based on whether email or phoneNumber is provided (PostgreSQL syntax)
         let query;
         let params;
-        
+
         if (email) {
-            query = 'SELECT id, full_name, email, phone_number, password_hash, role, ward, sub_county, is_active FROM users WHERE email = ?';
+            query = `SELECT id, full_name, email, phone_number, password_hash, role, ward, sub_county, is_active 
+                     FROM users WHERE email = $1`;
             params = [email];
         } else {
-            query = 'SELECT id, full_name, email, phone_number, password_hash, role, ward, sub_county, is_active FROM users WHERE phone_number = ?';
+            query = `SELECT id, full_name, email, phone_number, password_hash, role, ward, sub_county, is_active 
+                     FROM users WHERE phone_number = $1`;
             params = [phoneNumber];
         }
 
         // Get user
-        const [users] = await pool.query(query, params);
+        const result = await pool.query(query, params);
 
-        if (users.length === 0) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+        if (result.rows.length === 0) {
+            return res.status(401).json({ 
+                success: false, 
+                message: 'Invalid credentials' 
+            });
         }
 
-        const user = users[0];
+        const user = result.rows[0];
 
-        if (!user.is_active) {
-            return res.status(401).json({ success: false, message: 'Account is deactivated' });
+        // Check if user is active
+        if (user.is_active === false) {
+            return res.status(403).json({
+                success: false,
+                message: 'Account is deactivated. Please contact support.'
+            });
         }
 
         // Verify password
         const isMatch = await bcrypt.compare(password, user.password_hash);
+
         if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Invalid credentials' });
+            return res.status(401).json({
+                success: false,
+                message: 'Invalid credentials'
+            });
         }
 
         // Generate token
         const token = generateToken(user.id);
 
-        // Get user's preferred language (default to 'en')
-        const preferredLang = req.body.language || 'en';
-
-        // Generate welcome package with greeting
-        const welcomePackage = getWelcomePackage(user.full_name, preferredLang, user.role);
+        // Get welcome package
+        const welcomePackage = getWelcomePackage(language);
+        const dailyTip = getDailyTip(user.role, language);
 
         res.json({
             success: true,
@@ -137,41 +165,144 @@ router.post('/login', [
                     phoneNumber: user.phone_number,
                     role: user.role,
                     ward: user.ward,
-                    subCounty: user.sub_county,
-                    preferredLanguage: preferredLang
+                    subCounty: user.sub_county
                 },
-                welcome: welcomePackage
+                welcome: {
+                    greeting: getGreeting(user.full_name, language),
+                    dailyTip
+                }
             }
         });
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ success: false, message: 'Server error during login' });
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error during login',
+            error: error.message 
+        });
     }
 });
 
 // Get current user
 router.get('/me', authenticate, async (req, res) => {
     try {
-        const [users] = await pool.query(
-            `SELECT u.id, u.full_name, u.email, u.phone_number, u.role, u.ward, u.sub_county, 
-                    u.id_number, u.created_at,
-                    (SELECT COUNT(*) FROM applications WHERE user_id = u.id) as total_applications,
-                    (SELECT COUNT(*) FROM applications WHERE user_id = u.id AND status = 'approved') as approved_applications
-             FROM users u WHERE u.id = ?`,
+        const result = await pool.query(
+            `SELECT id, full_name, email, phone_number, role, ward, sub_county, id_number, profile_picture_url
+             FROM users WHERE id = $1`,
             [req.user.id]
         );
 
-        if (users.length === 0) {
-            return res.status(404).json({ success: false, message: 'User not found' });
+        if (result.rows.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
         }
+
+        const user = result.rows[0];
 
         res.json({
             success: true,
-            data: { user: users[0] }
+            data: {
+                id: user.id,
+                fullName: user.full_name,
+                email: user.email,
+                phoneNumber: user.phone_number,
+                role: user.role,
+                ward: user.ward,
+                subCounty: user.sub_county,
+                idNumber: user.id_number,
+                profilePictureUrl: user.profile_picture_url
+            }
         });
     } catch (error) {
         console.error('Get user error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+});
+
+// Get greeting
+router.get('/greeting', authenticate, async (req, res) => {
+    try {
+        const language = req.query.lang || 'en';
+        const user = req.user;
+
+        const greeting = getGreeting(user.fullName, language);
+        const dailyTip = getDailyTip(user.role, language);
+
+        res.json({
+            success: true,
+            data: {
+                greeting,
+                dailyTip
+            }
+        });
+    } catch (error) {
+        console.error('Greeting error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+});
+
+// Get supported languages
+router.get('/languages', async (req, res) => {
+    try {
+        const languages = getSupportedLanguages();
+        res.json({
+            success: true,
+            data: languages
+        });
+    } catch (error) {
+        console.error('Languages error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
+    }
+});
+
+// Update language preference
+router.put('/language', authenticate, [
+    body('language').notEmpty().withMessage('Language is required')
+], async (req, res) => {
+    try {
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ success: false, errors: errors.array() });
+        }
+
+        const { language } = req.body;
+
+        await pool.query(
+            'UPDATE users SET preferred_language = $1 WHERE id = $2',
+            [language, req.user.id]
+        );
+
+        const greeting = getGreeting(req.user.fullName, language);
+
+        res.json({
+            success: true,
+            message: 'Language preference updated',
+            data: {
+                greeting,
+                language
+            }
+        });
+    } catch (error) {
+        console.error('Update language error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
     }
 });
 
@@ -187,18 +318,23 @@ router.post('/change-password', authenticate, [
         }
 
         const { currentPassword, newPassword } = req.body;
-        const userId = req.user.id;
 
-        // Get current password hash
-        const [users] = await pool.query('SELECT password_hash FROM users WHERE id = ?', [userId]);
-        if (users.length === 0) {
-            return res.status(404).json({ success: false, message: 'User not found' });
-        }
+        // Get current user
+        const result = await pool.query(
+            'SELECT password_hash FROM users WHERE id = $1',
+            [req.user.id]
+        );
+
+        const user = result.rows[0];
 
         // Verify current password
-        const isMatch = await bcrypt.compare(currentPassword, users[0].password_hash);
+        const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
+
         if (!isMatch) {
-            return res.status(401).json({ success: false, message: 'Current password is incorrect' });
+            return res.status(401).json({
+                success: false,
+                message: 'Current password is incorrect'
+            });
         }
 
         // Hash new password
@@ -206,79 +342,22 @@ router.post('/change-password', authenticate, [
         const newPasswordHash = await bcrypt.hash(newPassword, salt);
 
         // Update password
-        await pool.query('UPDATE users SET password_hash = ? WHERE id = ?', [newPasswordHash, userId]);
-
-        res.json({ success: true, message: 'Password changed successfully' });
-    } catch (error) {
-        console.error('Change password error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// Get greeting for current user
-router.get('/greeting', authenticate, async (req, res) => {
-    try {
-        const lang = req.query.lang || req.user.preferred_language || 'en';
-        const greeting = getGreeting(req.user.full_name, lang);
-        const dailyTip = getDailyTip(lang, req.user.role);
-
-        res.json({
-            success: true,
-            data: {
-                greeting,
-                dailyTip,
-                language: lang
-            }
-        });
-    } catch (error) {
-        console.error('Get greeting error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// Get supported languages
-router.get('/languages', async (req, res) => {
-    try {
-        const languages = getSupportedLanguages();
-        res.json({
-            success: true,
-            data: { languages }
-        });
-    } catch (error) {
-        console.error('Get languages error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
-    }
-});
-
-// Update user language preference
-router.put('/language', authenticate, async (req, res) => {
-    try {
-        const { language } = req.body;
-        const supportedLangs = ['en', 'sw', 'fr'];
-        
-        if (!supportedLangs.includes(language)) {
-            return res.status(400).json({ success: false, message: 'Unsupported language' });
-        }
-
         await pool.query(
-            'UPDATE users SET preferred_language = ? WHERE id = ?',
-            [language, req.user.id]
+            'UPDATE users SET password_hash = $1 WHERE id = $2',
+            [newPasswordHash, req.user.id]
         );
 
-        // Get new greeting in updated language
-        const greeting = getGreeting(req.user.full_name, language);
-
         res.json({
             success: true,
-            message: 'Language updated successfully',
-            data: {
-                language,
-                greeting
-            }
+            message: 'Password changed successfully'
         });
     } catch (error) {
-        console.error('Update language error:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        console.error('Change password error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error',
+            error: error.message
+        });
     }
 });
 
