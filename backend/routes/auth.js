@@ -43,10 +43,10 @@ router.post('/register', [
         const salt = await bcrypt.genSalt(10);
         const passwordHash = await bcrypt.hash(password, salt);
 
-        // Insert user with RETURNING clause (PostgreSQL)
+        // Insert user with RETURNING clause (PostgreSQL) - UUID id
         const result = await pool.query(
-            `INSERT INTO users (full_name, email, phone_number, password_hash, role, ward, sub_county, id_number)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            `INSERT INTO users (id, full_name, email, phone_number, password_hash, role, ward, sub_county, id_number)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8)
              RETURNING id, full_name, email, phone_number, role, ward, sub_county`,
             [fullName, email, phoneNumber, passwordHash, role, ward, subCounty, idNumber]
         );
